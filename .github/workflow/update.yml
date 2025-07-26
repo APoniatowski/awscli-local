@@ -1,0 +1,95 @@
+name: Update AUR Package
+
+on:
+  schedule:
+    # Check for updates daily at 6 AM UTC
+    - cron: '0 6 * * *'
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  check-and-update:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
+        
+    - name: Install Python dependencies
+      run: |
+        pip install requests
+        
+    - name: Make scripts executable
+      run: |
+        chmod +x scripts/check_version.py
+        chmod +x scripts/update_pkgbuild.py
+        chmod +x scripts/generate_srcinfo.py
+        
+    - name: Check for new version
+      id: version_check
+      run: python scripts/check_version.py
+      
+    - name: Update PKGBUILD
+      if: steps.version_check.outputs.needs_update == 'true'
+      run: python scripts/update_pkgbuild.py "${{ steps.version_check.outputs.latest_version }}"
+        
+    - name: Generate .SRCINFO
+      if: steps.version_check.outputs.needs_update == 'true'
+      run: python scripts/generate_srcinfo.py
+        
+    - name: Setup SSH for AUR
+      if: steps.version_check.outputs.needs_update == 'true'
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.AUR_SSH_PRIVATE_KEY }}" > ~/.ssh/aur
+        chmod 600 ~/.ssh/aur
+        
+        # If you have a passphrase, start ssh-agent and add the key
+        # Uncomment these lines if your key has a passphrase:
+        # eval "$(ssh-agent -s)"
+        # echo "${{ secrets.AUR_SSH_PASSPHRASE }}" | ssh-add ~/.ssh/aur
+        
+        echo "Host aur.archlinux.org" >> ~/.ssh/config
+        echo "  HostName aur.archlinux.org" >> ~/.ssh/config
+        echo "  User aur" >> ~/.ssh/config
+        echo "  IdentityFile ~/.ssh/aur" >> ~/.ssh/config
+        echo "  StrictHostKeyChecking no" >> ~/.ssh/config
+        
+    - name: Clone AUR repository
+      if: steps.version_check.outputs.needs_update == 'true'
+      run: |
+        git clone ssh://aur@aur.archlinux.org/python-awscli-local.git aur-repo
+        
+    - name: Update AUR repository
+      if: steps.version_check.outputs.needs_update == 'true'
+      run: |
+        cp PKGBUILD aur-repo/
+        cp .SRCINFO aur-repo/
+        
+        cd aur-repo
+        
+        git config user.name "GitHub Actions"
+        git config user.email "adam@poniatowski.dev"
+        
+        git add PKGBUILD .SRCINFO
+        git commit -m "Update to version ${{ steps.version_check.outputs.latest_version }}"
+        git push
+        
+    - name: Create GitHub release
+      if: steps.version_check.outputs.needs_update == 'true'
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: v${{ steps.version_check.outputs.latest_version }}
+        release_name: Release ${{ steps.version_check.outputs.latest_version }}
+        body: |
+          Automated update to version ${{ steps.version_check.outputs.latest_version }}
+          
+          This release updates the AUR package to match the latest version available on PyPI.
+        draft: false
+        prerelease: false
