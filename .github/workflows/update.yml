@@ -4,7 +4,7 @@ on:
   schedule:
     # Check for updates daily at 6 AM UTC
     - cron: '0 6 * * *'
-  workflow_dispatch: # Allow manual triggering
+  workflow_dispatch: 
 
 jobs:
   check-and-update:
@@ -47,12 +47,6 @@ jobs:
         mkdir -p ~/.ssh
         echo "${{ secrets.AUR_SSH_PRIVATE_KEY }}" > ~/.ssh/aur
         chmod 600 ~/.ssh/aur
-        
-        # If you have a passphrase, start ssh-agent and add the key
-        # Uncomment these lines if your key has a passphrase:
-        # eval "$(ssh-agent -s)"
-        # echo "${{ secrets.AUR_SSH_PASSPHRASE }}" | ssh-add ~/.ssh/aur
-        
         echo "Host aur.archlinux.org" >> ~/.ssh/config
         echo "  HostName aur.archlinux.org" >> ~/.ssh/config
         echo "  User aur" >> ~/.ssh/config
@@ -93,3 +87,4 @@ jobs:
           This release updates the AUR package to match the latest version available on PyPI.
         draft: false
         prerelease: false
+
