@@ -4,7 +4,7 @@ on:
   schedule:
     # Check for updates daily at 6 AM UTC
     - cron: '0 6 * * *'
-  workflow_dispatch: 
+  workflow_dispatch:
 
 jobs:
   check-and-update:
@@ -45,13 +45,31 @@ jobs:
       if: steps.version_check.outputs.needs_update == 'true'
       run: |
         mkdir -p ~/.ssh
-        echo "${{ secrets.AUR_SSH_PRIVATE_KEY }}" > ~/.ssh/aur
-        chmod 600 ~/.ssh/aur
+        echo "${{ secrets.AUR_SSH_PRIVATE_KEY }}" | tr -d '\r' > ~/.ssh/aur_key
+        chmod 600 ~/.ssh/aur_key
+        
+        ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
+        
+        cat >> ~/.ssh/config << EOF
+        Host aur.archlinux.org
+          HostName aur.archlinux.org
+          User aur
+          IdentityFile ~/.ssh/aur_key
+          IdentitiesOnly yes
+        EOF
+        
+        echo "Testing SSH connection..."
+        ssh -o BatchMode=yes -o ConnectTimeout=10 -T aur@aur.archlinux.org || echo "SSH test failed, but continuing..."
+
+    - name: Configure SSH for AUR
+      if: steps.version_check.outputs.needs_update == 'true'
+      run: |
+        mkdir -p ~/.ssh
+        ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
         echo "Host aur.archlinux.org" >> ~/.ssh/config
-        echo "  HostName aur.archlinux.org" >> ~/.ssh/config
+        echo "  HostName aur.archlinux.org" >> ~/.ssh/config  
         echo "  User aur" >> ~/.ssh/config
-        echo "  IdentityFile ~/.ssh/aur" >> ~/.ssh/config
-        echo "  StrictHostKeyChecking no" >> ~/.ssh/config
+        echo "  IdentitiesOnly yes" >> ~/.ssh/config
         
     - name: Clone AUR repository
       if: steps.version_check.outputs.needs_update == 'true'
@@ -87,4 +105,3 @@ jobs:
           This release updates the AUR package to match the latest version available on PyPI.
         draft: false
         prerelease: false
-
